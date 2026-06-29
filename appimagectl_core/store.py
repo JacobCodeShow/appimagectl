@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 
-from appimagectl_lib.shared import (
+from appimagectl_core.i18n import tr
+from appimagectl_core.shared import (
     CONFIG_DIR,
     CONFIG_FILE,
     DEFAULTS,
@@ -21,7 +22,7 @@ def init_config():
                 ensure_ascii=False,
             )
         )
-        log_ok(f"已创建默认配置: {CONFIG_FILE}")
+        log_ok(tr("store.default_config_created", path=CONFIG_FILE))
     if not INSTALLED_LIST.exists():
         INSTALLED_LIST.write_text("[]")
 

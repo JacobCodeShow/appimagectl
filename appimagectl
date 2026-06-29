@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""CLI entrypoint for appimagectl."""
+
+# ══════════════════════════════════════════
+# 版本检查
+# ══════════════════════════════════════════
+
+import os
+import sys
+
+
+def _bootstrap_lang() -> str:
+    for key in ("APPIMAGECTL_LANG", "LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(key, "").strip().lower()
+        if not value:
+            continue
+        if value.startswith("zh"):
+            return "zh"
+        return "en"
+    return "en"
+
+MIN_VERSION = (3, 10)
+if sys.version_info < MIN_VERSION:
+    required = ".".join(map(str, MIN_VERSION))
+    current = sys.version.split()[0]
+    if _bootstrap_lang() == "zh":
+        print(f"需要 Python {required}+，当前 {current}", file=sys.stderr)
+    else:
+        print(f"Python {required}+ is required, current {current}", file=sys.stderr)
+    sys.exit(1)
+
+# ══════════════════════════════════════════
+# 导入（仅标准库，零外部依赖）
+# ══════════════════════════════════════════
+
+import argparse
+from appimagectl_core.__about__ import __version__ as VERSION
+from appimagectl_core.commands import cmd_config, cmd_import, cmd_list, cmd_remove, cmd_scan, cmd_verify
+from appimagectl_core.i18n import tr
+from appimagectl_core.install import cmd_install
+from appimagectl_core.shared import (
+    CONFIG_DIR,
+    DISTRO,
+    SCRIPT_NAME,
+    SESSION_TYPE,
+    check_dependencies,
+)
+from appimagectl_core.store import load_installed
+
+
+# ══════════════════════════════════════════
+# CLI 入口
+# ══════════════════════════════════════════
+
+
+class LocalizedHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    def add_usage(self, usage, actions, groups, prefix=None):
+        if prefix is None:
+            prefix = tr("argparse.usage_prefix")
+        return super().add_usage(usage, actions, groups, prefix)
+
+
+class LocalizedArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        self.exit(2, tr("argparse.error_line", prog=self.prog, message=message))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = LocalizedArgumentParser(
+        prog=SCRIPT_NAME,
+        description=tr("cli.description"),
+        formatter_class=LocalizedHelpFormatter,
+        usage=tr("cli.usage", script=SCRIPT_NAME),
+        add_help=False,
+    )
+    parser._optionals.title = tr("argparse.options_title")
+    # 隐藏的位置参数（配合 --install / --reinstall 使用）
+    parser.add_argument("appimage", nargs="?", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("name", nargs="?", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("-h", "--help", action="help", default=argparse.SUPPRESS, help=tr("argparse.help"))
+
+    # 主要操作
+    parser.add_argument(
+        "--install", "-i", action="store_true",
+        help=tr("cli.help.install"),
+    )
+    parser.add_argument(
+        "--reinstall", action="store_true",
+        help=tr("cli.help.reinstall"),
+    )
+    parser.add_argument("--remove", "-r", metavar="NAME", help=tr("cli.help.remove"))
+    parser.add_argument("--list", "-l", action="store_true", help=tr("cli.help.list"))
+    parser.add_argument("--verify", action="store_true", help=tr("cli.help.verify"))
+    parser.add_argument("--config", "-c", action="store_true", help=tr("cli.help.config"))
+
+    # 扫描 & 导入
+    parser.add_argument(
+        "--scan", "-s", action="store_true",
+        help=tr("cli.help.scan"),
+    )
+    parser.add_argument(
+        "--import", "-I", dest="do_import", action="store_true",
+        help=tr("cli.help.import"),
+    )
+    parser.add_argument(
+        "--scan-dir", metavar="DIR", action="append", default=[],
+        help=tr("cli.help.scan_dir"),
+    )
+    parser.add_argument(
+        "--deep", action="store_true",
+        help=tr("cli.help.deep"),
+    )
+    parser.add_argument(
+        "--fix", action="store_true",
+        help=tr("cli.help.fix"),
+    )
+
+    # 修饰符
+    parser.add_argument(
+        "--version", "-v", action="store_true",
+        help=tr("cli.help.version"),
+    )
+    parser.add_argument("-y", "--yes", action="store_true", help=tr("cli.help.yes"))
+    parser.add_argument("-f", "--force", action="store_true", help=tr("cli.help.force"))
+
+    return parser
+
+
+def main():
+    parser = build_parser()
+
+    args = parser.parse_args()
+    force = args.yes or args.force
+
+    if args.install and args.reinstall:
+        parser.error(tr("cli.error.install_and_reinstall"))
+
+    match True:
+        case _ if args.version:
+            print(f"{SCRIPT_NAME}  {VERSION}")
+            print(f"  {tr('cli.version.python')}: {sys.version.split()[0]}")
+            print(f"  {tr('cli.version.system')}: {DISTRO}")
+            print(f"  {tr('cli.version.session')}: {SESSION_TYPE}")
+            print(f"  {tr('cli.version.config_dir')}: {CONFIG_DIR}")
+            apps = load_installed()
+            print(f"  {tr('cli.version.installed')}: {tr('cli.version.apps', count=len(apps))}")
+        case _ if args.config:
+            cmd_config()
+        case _ if args.list:
+            cmd_list()
+        case _ if args.verify:
+            cmd_verify(force=force)
+        case _ if args.remove:
+            cmd_remove(args.remove, force=force)
+        case _ if args.do_import:
+            cmd_import(
+                scan_dirs=args.scan_dir or None,
+                deep=args.deep,
+                fix=args.fix,
+                force=force,
+            )
+        case _ if args.scan:
+            cmd_scan(
+                scan_dirs=args.scan_dir or None,
+                deep=args.deep,
+            )
+        case _ if args.appimage and (args.install or args.reinstall):
+            check_dependencies()
+            cmd_install(
+                args.appimage,
+                custom_name=args.name,
+                reinstall=args.reinstall,
+                force=force,
+            )
+        case _ if args.appimage:
+            parser.error(tr("cli.error.use_install_or_reinstall"))
+        case _ if args.install or args.reinstall:
+            parser.error(tr("cli.error.missing_file"))
+        case _:
+            parser.print_help(sys.stderr)
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

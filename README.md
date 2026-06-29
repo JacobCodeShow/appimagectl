@@ -1,10 +1,28 @@
 # appimagectl
 
-一个面向 GNOME 桌面的 AppImage 管理脚本，用来把零散的 AppImage 整理成可长期维护的本地安装：复制到统一目录、生成 .desktop、提取图标、修复 StartupWMClass、创建桌面快捷方式，并维护已安装清单。
+一个面向 GNOME 桌面的 AppImage 管理工具，用来把零散的 AppImage 整理成可长期维护的本地安装：复制到统一目录、生成 .desktop、提取图标、修复 StartupWMClass、创建桌面快捷方式，并维护已安装清单。
+
+English summary: `appimagectl` is a GNOME-oriented AppImage manager for Fedora and Ubuntu. It installs AppImages into a managed directory, creates `.desktop` entries and icons, keeps an installed-app index, and can verify, scan, and import unmanaged AppImages.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/Platform-GNOME%20%7C%20Fedora%20%7C%20Ubuntu-lightgrey.svg)]()
+
+## English At A Glance
+
+- Primary audience: GNOME users on Fedora, Ubuntu, and compatible distributions
+- Runtime: Python 3.10+ with standard library only
+- Main commands: `--install`, `--reinstall`, `--remove`, `--list`, `--verify`, `--config`, `--scan`, `--import`
+- Default config location: `~/.config/appimagectl/`
+- Output language: auto-detected from `APPIMAGECTL_LANG`, `LC_ALL`, `LC_MESSAGES`, then `LANG`
+
+Quick start:
+
+```bash
+./appimagectl --install ~/Downloads/App.AppImage
+./appimagectl --list
+./appimagectl --remove AppName
+```
 
 ## 特性
 
@@ -33,14 +51,14 @@
 - gio
 - xdg-user-dir
 
-其中前两个命令缺失时，脚本会尝试通过 dnf 或 apt 自动安装对应系统包。
+其中前两个命令缺失时，工具会尝试通过 dnf 或 apt 自动安装对应系统包。
 
 ## 安装
 
 ```bash
 git clone https://github.com/JacobCodeShow/appimagectl.git
 cd appimagectl
-chmod +x appimagectl.py
+chmod +x appimagectl
 ```
 
 如果你更习惯 SSH，也可以使用：
@@ -52,7 +70,7 @@ git clone git@github.com:JacobCodeShow/appimagectl.git
 可选：创建一个更短的全局命令。
 
 ```bash
-sudo ln -s "$(pwd)/appimagectl.py" /usr/local/bin/appimagectl
+sudo ln -s "$(pwd)/appimagectl" /usr/local/bin/appimagectl
 ```
 
 ## 项目结构
@@ -60,51 +78,67 @@ sudo ln -s "$(pwd)/appimagectl.py" /usr/local/bin/appimagectl
 当前仓库采用“单入口 + 内部模块目录”的轻量结构：
 
 ```text
-appimagectl.py        # CLI 入口
-appimagectl_lib/
+appimagectl          # CLI 入口（可直接执行）
+appimagectl_core/
 	shared.py           # 常量、日志、基础工具
 	store.py            # 配置与安装记录
 	__about__.py        # 项目版本号单一来源
+	i18n.py             # 语言选择、装载和 tr() 接口
+	locales/
+		en.py             # 英文消息表
+		zh.py             # 中文消息表
 	desktop.py          # .desktop / 图标 / WMClass
 	install.py          # 安装与卸载主流程
 	commands.py         # list / verify / config / scan / import
 ```
 
-这样可以保留 `./appimagectl.py` 的使用方式，同时把内部实现限制在 `appimagectl_lib/` 下，便于后续维护和扩展。
+这样可以直接使用 `./appimagectl`，同时把内部实现限制在 `appimagectl_core/` 下，便于后续维护和扩展。
 
-如果需要更新脚本版本，优先修改 `appimagectl_lib/__about__.py` 中的 `__version__`。
+如果需要更新脚本版本，优先修改 `appimagectl_core/__about__.py` 中的 `__version__`。
+
+输出语言会按以下顺序自动选择：`APPIMAGECTL_LANG` > `LC_ALL` > `LC_MESSAGES` > `LANG`。
+
+- 以 `zh` 开头时显示中文
+- 其他值默认显示英文
+
+这条规则当前覆盖 `--help`、参数错误、`--version`、`--config`、`--list`、`--verify`、`--scan`、`--import` 以及安装过程中的主要提示信息。
+
+语言文件约定：
+
+- 所有语言文件统一放在 `appimagectl_core/locales/` 下
+- 每个语言文件导出一个顶层 `MESSAGES` 字典
+- 消息 key 在不同语言文件中应保持一致，缺失 key 会回退到英文
+- 新增语言时，优先新增独立文件，例如 `ja.py`、`fr.py`，再在 `appimagectl_core/i18n.py` 中注册
 
 ## 快速开始
 
-以下示例默认直接运行仓库中的脚本；如果你已经创建了全局软链接，可以把 `./appimagectl.py` 替换成 `appimagectl`。
+以下示例默认直接运行仓库中的可执行入口；如果你已经创建了全局软链接，也可以直接使用 `appimagectl`。
 
 ```bash
-# 直接安装
-./appimagectl.py ~/Downloads/Obsidian-1.8.10.AppImage
+# 安装
+./appimagectl --install ~/Downloads/Obsidian-1.8.10.AppImage
 
 # 指定显示名称
-./appimagectl.py ~/Downloads/ZenBrowser.AppImage "Zen Browser"
+./appimagectl --install ~/Downloads/ZenBrowser.AppImage "Zen Browser"
 
 # 查看已安装应用
-./appimagectl.py --list
+./appimagectl --list
 
 # 卸载
-./appimagectl.py --remove Obsidian
+./appimagectl --remove Obsidian
 ```
-- appimagectl_lib/__about__.py    # 项目版本号单一来源
 
 ## 命令用法
 
 ```text
-appimagectl.py --install <file> [name]
-appimagectl.py --reinstall <file> [name]
-appimagectl.py <file> [name]
-appimagectl.py --remove <name>
-appimagectl.py --list
-appimagectl.py --verify
-appimagectl.py --config
-appimagectl.py --scan
-appimagectl.py --import
+appimagectl --install <file> [name]
+appimagectl --reinstall <file> [name]
+appimagectl --remove <name>
+appimagectl --list
+appimagectl --verify
+appimagectl --config
+appimagectl --scan
+appimagectl --import
 ```
 
 无参数执行时会显示帮助信息。
@@ -113,16 +147,13 @@ appimagectl.py --import
 
 ```bash
 # 显式安装
-./appimagectl.py --install ~/Downloads/App.AppImage
-
-# 简写安装
-./appimagectl.py ~/Downloads/App.AppImage
+./appimagectl --install ~/Downloads/App.AppImage
 
 # 重新安装
-./appimagectl.py --reinstall ~/Downloads/App.AppImage
+./appimagectl --reinstall ~/Downloads/App.AppImage
 
 # 跳过确认提示
-./appimagectl.py -y ~/Downloads/App.AppImage
+./appimagectl -y --install ~/Downloads/App.AppImage
 ```
 
 安装流程包含以下动作：
@@ -137,8 +168,8 @@ appimagectl.py --import
 ### 卸载
 
 ```bash
-./appimagectl.py --remove Obsidian
-./appimagectl.py --remove zen-browser
+./appimagectl --remove Obsidian
+./appimagectl --remove zen-browser
 ```
 
 卸载会删除：
@@ -152,9 +183,9 @@ appimagectl.py --import
 ### 列表与校验
 
 ```bash
-./appimagectl.py --list
-./appimagectl.py --verify
-./appimagectl.py -y --verify
+./appimagectl --list
+./appimagectl --verify
+./appimagectl -y --verify
 ```
 
 - --list: 展示已安装应用、版本、路径、安装时间和异常状态
@@ -165,19 +196,19 @@ appimagectl.py --import
 
 ```bash
 # 扫描当前桌面配置引用到、但未被管理的 AppImage
-./appimagectl.py --scan
+./appimagectl --scan
 
 # 额外扫描目录
-./appimagectl.py --scan --scan-dir ~/Downloads --scan-dir ~/Apps
+./appimagectl --scan --scan-dir ~/Downloads --scan-dir ~/Apps
 
 # 深度扫描，识别无 .AppImage 后缀文件
-./appimagectl.py --scan --deep --scan-dir ~/Downloads
+./appimagectl --scan --deep --scan-dir ~/Downloads
 
 # 导入扫描结果
-./appimagectl.py --import
+./appimagectl --import
 
 # 导入并自动补 .desktop / 图标 / WMClass
-./appimagectl.py --import --fix --scan-dir ~/Downloads
+./appimagectl --import --fix --scan-dir ~/Downloads
 ```
 
 - --scan: 收集未纳入 installed.json 管理的 AppImage 候选项
@@ -189,18 +220,18 @@ appimagectl.py --import
 ### 配置与版本
 
 ```bash
-./appimagectl.py --config
-./appimagectl.py --version
+./appimagectl --config
+./appimagectl --version
 ```
 
-脚本会显示用户配置和自动检测到的系统信息，包括发行版、会话类型、图标目录、桌面文件目录和已安装数量。
+工具会显示用户配置和自动检测到的系统信息，包括发行版、会话类型、图标目录、桌面文件目录和已安装数量。
 
 ## 配置文件
 
 首次运行会自动创建以下文件：
 
-- ~/.config/appimage-installer/config.json
-- ~/.config/appimage-installer/installed.json
+- ~/.config/appimagectl/config.json
+- ~/.config/appimagectl/installed.json
 
 默认配置如下：
 
@@ -227,7 +258,7 @@ appimagectl.py --import
 ## 已知行为
 
 - 版本比较基于文件名中的数字，例如 App-1.2.3.AppImage
-- 当内部 .desktop 缺少 StartupWMClass 时，脚本会尝试运行目标应用约 5 秒来检测窗口类名
+- 当内部 .desktop 缺少 StartupWMClass 时，工具会尝试运行目标应用约 5 秒来检测窗口类名
 - Electron 应用会在 Exec 字段追加 --no-sandbox
 - 若无法提取图标，会优先调用 ImageMagick；再失败则生成纯标准库占位 PNG
 
@@ -236,8 +267,8 @@ appimagectl.py --import
 提交前建议至少执行一次帮助和版本检查：
 
 ```bash
-python3 appimagectl.py --help
-python3 appimagectl.py --version
+./appimagectl --help
+./appimagectl --version
 ```
 
 如果你准备对外发布，可以继续补充截图、发行说明或示例 AppImage 场景。

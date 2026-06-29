@@ -7,8 +7,9 @@ import time
 import zlib
 from pathlib import Path
 
-from appimagectl_lib.shared import HOME, SESSION_TYPE, icon_base_dir, log_info, log_ok
-from appimagectl_lib.store import get_config
+from appimagectl_core.i18n import tr
+from appimagectl_core.shared import HOME, SESSION_TYPE, icon_base_dir, log_info, log_ok
+from appimagectl_core.store import get_config
 
 
 def parse_desktop_file(path: Path) -> dict[str, str]:
@@ -61,7 +62,7 @@ def ensure_index_theme():
     system_theme = Path("/usr/share/icons/hicolor/index.theme")
     if system_theme.exists():
         shutil.copy(system_theme, dest)
-        log_ok("已复制系统 index.theme")
+        log_ok(tr("desktop.index_theme_copied"))
     else:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(
@@ -72,7 +73,7 @@ def ensure_index_theme():
             "[scalable/apps]\nSize=48\nMinSize=8\nMaxSize=512\n"
             "Context=Applications\nType=Scalable\n"
         )
-        log_ok("已创建 index.theme")
+        log_ok(tr("desktop.index_theme_created"))
 
 
 def _search_icon(root: Path, name: str) -> Path | None:
@@ -183,7 +184,7 @@ def detect_wmclass_runtime(appimage_path: Path) -> str | None:
     if not get_config("auto_detect_wmclass", True):
         return None
 
-    log_info("正在启动应用以检测窗口类名（约 5 秒后自动关闭）...")
+    log_info(tr("desktop.detect_wmclass"))
 
     try:
         proc = subprocess.Popen(

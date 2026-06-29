@@ -4,8 +4,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from appimagectl_lib.__about__ import __version__ as VERSION
-from appimagectl_lib.desktop import (
+from appimagectl_core.__about__ import __version__ as VERSION
+from appimagectl_core.desktop import (
     ensure_index_theme,
     find_best_icon,
     find_internal_desktop,
@@ -13,8 +13,9 @@ from appimagectl_lib.desktop import (
     parse_desktop_file,
     try_imagemagick_icon,
 )
-from appimagectl_lib.install import extract_appimage, full_remove
-from appimagectl_lib.shared import (
+from appimagectl_core.i18n import tr
+from appimagectl_core.install import extract_appimage, full_remove
+from appimagectl_core.shared import (
     C,
     CONFIG_DIR,
     CONFIG_FILE,
@@ -35,7 +36,7 @@ from appimagectl_lib.shared import (
     update_system_caches,
     xdg_desktop_dir,
 )
-from appimagectl_lib.store import (
+from appimagectl_core.store import (
     add_installed,
     find_installed,
     init_config,
@@ -50,13 +51,13 @@ def cmd_list():
     apps = load_installed()
 
     if not apps:
-        log_info("还没有安装任何 AppImage")
-        log_info(f"使用 {C.BOLD}{sys.argv[0]} --install <file>{C.NC} 安装第一个应用")
+        log_info(tr("commands.list.empty"))
+        log_info(tr("commands.list.install_first", script=f"{C.BOLD}{sys.argv[0]}{C.NC}"))
         return
 
     print(file=sys.stderr)
-    print(f"{C.BOLD}  已安装的 AppImage{C.NC}", file=sys.stderr)
-    print(f"  {C.DIM}列表文件: {INSTALLED_LIST}{C.NC}", file=sys.stderr)
+    print(f"{C.BOLD}{tr('commands.list.header')}{C.NC}", file=sys.stderr)
+    print(f"  {C.DIM}{tr('commands.list.file')}: {INSTALLED_LIST}{C.NC}", file=sys.stderr)
     print(file=sys.stderr)
 
     valid = broken = 0
@@ -71,39 +72,45 @@ def cmd_list():
 
         if not appimage.exists():
             icon_s = f"{C.RED}✗{C.NC}"
-            status = f"{C.RED}AppImage 文件丢失{C.NC}"
+            status = f"{C.RED}{tr('commands.list.status_missing_appimage')}{C.NC}"
             is_broken = True
         elif not os.access(appimage, os.X_OK):
             icon_s = f"{C.YELLOW}!{C.NC}"
-            status = f"{C.YELLOW}文件不可执行{C.NC}"
+            status = f"{C.YELLOW}{tr('commands.list.status_not_executable')}{C.NC}"
             is_broken = True
         elif not desktop.exists():
             icon_s = f"{C.YELLOW}!{C.NC}"
-            status = f"{C.YELLOW}桌面文件丢失{C.NC}"
+            status = f"{C.YELLOW}{tr('commands.list.status_missing_desktop')}{C.NC}"
             is_broken = True
 
         broken += 1 if is_broken else 0
         valid += 0 if is_broken else 1
 
         print(f"  {icon_s}  {C.BOLD}{app['display_name']}{C.NC}", file=sys.stderr)
-        print(f"     {C.DIM}标识:{C.NC}   {app['app_id']}", file=sys.stderr)
-        print(f"     {C.DIM}WMClass:{C.NC} {app['wmclass']}", file=sys.stderr)
+        print(f"     {C.DIM}{tr('commands.list.id')}:{C.NC}   {app['app_id']}", file=sys.stderr)
+        print(f"     {C.DIM}{tr('commands.list.wmclass')}:{C.NC} {app['wmclass']}", file=sys.stderr)
         version = app.get("version", "")
         if version:
-            print(f"     {C.DIM}版本:{C.NC}   {version}", file=sys.stderr)
-        print(f"     {C.DIM}路径:{C.NC}   {app['appimage_path']}", file=sys.stderr)
-        print(f"     {C.DIM}安装:{C.NC}   {app['installed_date']}", file=sys.stderr)
+            print(f"     {C.DIM}{tr('commands.list.version')}:{C.NC}   {version}", file=sys.stderr)
+        print(f"     {C.DIM}{tr('commands.list.path')}:{C.NC}   {app['appimage_path']}", file=sys.stderr)
+        print(f"     {C.DIM}{tr('commands.list.installed_at')}:{C.NC}   {app['installed_date']}", file=sys.stderr)
         if status:
-            print(f"     {C.DIM}状态:{C.NC}   {status}", file=sys.stderr)
+            print(f"     {C.DIM}{tr('commands.list.status')}:{C.NC}   {status}", file=sys.stderr)
         print(file=sys.stderr)
 
     print(f"  {C.DIM}{'─' * 32}{C.NC}", file=sys.stderr)
-    print(f"  共 {C.BOLD}{len(apps)}{C.NC} 个应用", file=sys.stderr)
+    print(f"  {tr('commands.list.total', count=f'{C.BOLD}{len(apps)}{C.NC}')}", file=sys.stderr)
     if broken:
-        print(f"  {C.GREEN}●{C.NC} 正常 {valid}  {C.RED}✗{C.NC} 异常 {broken}", file=sys.stderr)
-        print(f"  {C.DIM}使用 {sys.argv[0]} --verify 检查并清理异常项{C.NC}", file=sys.stderr)
+        print(
+            f"  {tr('commands.list.summary_broken', ok_icon=f'{C.GREEN}●{C.NC}', valid=valid, bad_icon=f'{C.RED}✗{C.NC}', broken=broken)}",
+            file=sys.stderr,
+        )
+        print(
+            f"  {C.DIM}{tr('commands.list.verify_hint', script=sys.argv[0])}{C.NC}",
+            file=sys.stderr,
+        )
     else:
-        print(f"  {C.GREEN}● 全部正常{C.NC}", file=sys.stderr)
+        print(f"  {tr('commands.list.summary_ok', ok_icon=f'{C.GREEN}●{C.NC}')}", file=sys.stderr)
     print(file=sys.stderr)
 
 
@@ -117,12 +124,12 @@ def cmd_remove(name: str, force: bool = False):
     )
 
     if not app:
-        log_warn(f"未在安装列表中找到匹配 '{name}' 的应用")
-        log_info(f"使用 {C.BOLD}{sys.argv[0]} --list{C.NC} 查看已安装应用")
+        log_warn(tr("commands.remove.not_found", name=name))
+        log_info(tr("commands.remove.list_hint", script=f"{C.BOLD}{sys.argv[0]}{C.NC}"))
         sys.exit(1)
 
     full_remove(app, delete_appimage=True, ask_delete=not force)
-    log_ok("移除完成")
+    log_ok(tr("commands.remove.done"))
 
 
 def cmd_verify(force: bool = False):
@@ -130,10 +137,10 @@ def cmd_verify(force: bool = False):
     apps = load_installed()
 
     if not apps:
-        log_info("列表为空，无需验证")
+        log_info(tr("commands.verify.empty"))
         return
 
-    log_info("正在验证已安装应用...")
+    log_info(tr("commands.verify.start"))
     print(file=sys.stderr)
 
     ibd = icon_base_dir()
@@ -147,28 +154,35 @@ def cmd_verify(force: bool = False):
         icon_name = app["icon_name"]
 
         if not appimage.exists():
-            issues.append(f"AppImage 文件不存在: {appimage}")
+            issues.append(tr("commands.verify.issue_missing_appimage", path=appimage))
         elif not os.access(appimage, os.X_OK):
-            issues.append("AppImage 文件不可执行")
+            issues.append(tr("commands.verify.issue_not_executable"))
         if not desktop.exists():
-            issues.append(f"桌面文件不存在: {desktop}")
+            issues.append(tr("commands.verify.issue_missing_desktop", path=desktop))
 
         icon_256 = ibd / "256x256" / "apps" / f"{icon_name}.png"
         icon_svg = ibd / "scalable" / "apps" / f"{icon_name}.svg"
         if not icon_256.exists() and not icon_svg.exists() and icon_name != "application-x-executable":
-            issues.append("图标文件丢失")
+            issues.append(tr("commands.verify.issue_missing_icon"))
 
         if not issues:
             print(
-                f"  {C.GREEN}●{C.NC}  {C.BOLD}{app['display_name']}{C.NC}"
-                f"  {C.GREEN}正常{C.NC}",
+                tr(
+                    "commands.verify.ok_entry",
+                    ok_icon=f"{C.GREEN}●{C.NC}",
+                    name=f"{C.BOLD}{app['display_name']}{C.NC}",
+                ),
                 file=sys.stderr,
             )
             cleaned.append(app)
             ok_count += 1
         else:
             print(
-                f"  {C.RED}✗{C.NC}  {C.BOLD}{app['display_name']}{C.NC}",
+                tr(
+                    "commands.verify.bad_entry",
+                    bad_icon=f"{C.RED}✗{C.NC}",
+                    name=f"{C.BOLD}{app['display_name']}{C.NC}",
+                ),
                 file=sys.stderr,
             )
             for issue in issues:
@@ -176,7 +190,7 @@ def cmd_verify(force: bool = False):
 
             do_remove = force
             if not do_remove:
-                do_remove = ask("  是否移除此记录？[y/N]").lower() == "y"
+                do_remove = ask(tr("commands.verify.remove_prompt")).lower() == "y"
 
             if do_remove:
                 desktop.unlink(missing_ok=True)
@@ -184,7 +198,7 @@ def cmd_verify(force: bool = False):
                 icon_svg.unlink(missing_ok=True)
                 (xdg_desktop_dir() / desktop.name).unlink(missing_ok=True)
                 removed_count += 1
-                print(f"  {C.YELLOW}已移除{C.NC}", file=sys.stderr)
+                print(f"  {C.YELLOW}{tr('commands.verify.removed')}{C.NC}", file=sys.stderr)
             else:
                 cleaned.append(app)
                 ok_count += 1
@@ -195,8 +209,9 @@ def cmd_verify(force: bool = False):
     print(file=sys.stderr)
     print(f"  {C.DIM}{'─' * 32}{C.NC}", file=sys.stderr)
     print(
-        f"  验证完成: {C.GREEN}正常 {ok_count}{C.NC}"
-        f"  {C.RED}已清理 {removed_count}{C.NC}",
+        f"  {tr('commands.verify.summary_prefix')} "
+        f"{C.GREEN}{tr('commands.verify.summary_ok')} {ok_count}{C.NC}  "
+        f"{C.RED}{tr('commands.verify.summary_removed')} {removed_count}{C.NC}",
         file=sys.stderr,
     )
     print(file=sys.stderr)
@@ -209,23 +224,23 @@ def cmd_config():
     dd = desktop_dir()
 
     print(file=sys.stderr)
-    print(f"{C.BOLD}  当前配置{C.NC}", file=sys.stderr)
-    print(f"  {C.DIM}配置文件: {CONFIG_FILE}{C.NC}", file=sys.stderr)
-    print(f"  {C.DIM}脚本版本: {VERSION}{C.NC}", file=sys.stderr)
+    print(f"{C.BOLD}{tr('commands.config.header')}{C.NC}", file=sys.stderr)
+    print(f"  {C.DIM}{tr('commands.config.file')}: {CONFIG_FILE}{C.NC}", file=sys.stderr)
+    print(f"  {C.DIM}{tr('commands.config.script_version')}: {VERSION}{C.NC}", file=sys.stderr)
     print(file=sys.stderr)
 
-    print(f"  {C.BOLD}── 用户配置（可修改）──{C.NC}", file=sys.stderr)
-    print(f"  {C.DIM}编辑文件: {CONFIG_FILE}{C.NC}", file=sys.stderr)
+    print(f"{C.BOLD}{tr('commands.config.user_header')}{C.NC}", file=sys.stderr)
+    print(f"  {C.DIM}{tr('commands.config.edit_file')}: {CONFIG_FILE}{C.NC}", file=sys.stderr)
     print(file=sys.stderr)
 
     for key, desc in [
-        ("install_dir", "AppImage 安装目录"),
-        ("default_icon_size", "首选图标尺寸"),
-        ("auto_detect_wmclass", "自动检测窗口类名"),
-        ("create_desktop_shortcut", "创建桌面快捷方式"),
-        ("ask_before_delete", "删除前确认提示"),
+        ("install_dir", tr("commands.config.desc.install_dir")),
+        ("default_icon_size", tr("commands.config.desc.default_icon_size")),
+        ("auto_detect_wmclass", tr("commands.config.desc.auto_detect_wmclass")),
+        ("create_desktop_shortcut", tr("commands.config.desc.create_desktop_shortcut")),
+        ("ask_before_delete", tr("commands.config.desc.ask_before_delete")),
     ]:
-        value = cfg.get("user", {}).get(key, "未设置")
+        value = cfg.get("user", {}).get(key, tr("commands.config.not_set"))
         print(
             f"  {C.BOLD}{key:<28}{C.NC} {str(value):<24}"
             f" {C.DIM}# {desc}{C.NC}",
@@ -233,20 +248,20 @@ def cmd_config():
         )
 
     print(file=sys.stderr)
-    print(f"  {C.BOLD}── 系统配置（自动检测，不可修改）──{C.NC}", file=sys.stderr)
+    print(f"{C.BOLD}{tr('commands.config.system_header')}{C.NC}", file=sys.stderr)
     print(file=sys.stderr)
 
     for key, value, desc in [
-        ("config_dir", str(CONFIG_DIR), "配置目录"),
-        ("installed_list", str(INSTALLED_LIST), "已安装列表"),
-        ("icon_base_dir", str(ibd), "图标目录"),
-        ("desktop_dir", str(dd), "桌面文件目录"),
-        ("session_type", SESSION_TYPE, "会话类型"),
-        ("distro", DISTRO, "发行版"),
+        ("config_dir", str(CONFIG_DIR), tr("commands.config.desc.config_dir")),
+        ("installed_list", str(INSTALLED_LIST), tr("commands.config.desc.installed_list")),
+        ("icon_base_dir", str(ibd), tr("commands.config.desc.icon_base_dir")),
+        ("desktop_dir", str(dd), tr("commands.config.desc.desktop_dir")),
+        ("session_type", SESSION_TYPE, tr("commands.config.desc.session_type")),
+        ("distro", DISTRO, tr("commands.config.desc.distro")),
     ]:
         print(
             f"  {C.BOLD}{key:<28}{C.NC} {value:<24}"
-            f" {C.DIM}# {desc} [系统]{C.NC}",
+            f" {C.DIM}# {desc} {tr('commands.config.system_tag')}{C.NC}",
             file=sys.stderr,
         )
     print(file=sys.stderr)
@@ -277,7 +292,7 @@ def _collect_unmanaged_candidates(
     applications_dir = desktop_dir()
     candidates: list[dict] = []
 
-    log_info("扫描 .desktop 文件...")
+    log_info(tr("commands.scan.desktop_scan"))
     desktop_count = 0
 
     for desktop_file in applications_dir.glob("*.desktop"):
@@ -323,16 +338,16 @@ def _collect_unmanaged_candidates(
             }
         )
 
-    log_info(f"  扫描了 {desktop_count} 个指向 AppImage 的 .desktop 文件")
+    log_info(tr("commands.scan.desktop_scan_count", count=desktop_count))
 
     if scan_dirs:
         for scan_dir_str in scan_dirs:
             scan_dir = Path(scan_dir_str).expanduser().resolve()
             if not scan_dir.exists():
-                log_warn(f"目录不存在: {scan_dir}")
+                log_warn(tr("commands.scan.dir_missing", path=scan_dir))
                 continue
 
-            log_info(f"扫描目录: {scan_dir}")
+            log_info(tr("commands.scan.scanning_dir", path=scan_dir))
             count = 0
 
             for found in scan_dir.rglob("*"):
@@ -364,7 +379,7 @@ def _collect_unmanaged_candidates(
                     }
                 )
 
-            log_info(f"  找到 {count} 个 AppImage 文件")
+            log_info(tr("commands.scan.found_appimages", count=count))
 
     seen: set[str] = set()
     unique: list[dict] = []
@@ -384,13 +399,13 @@ def cmd_scan(
     candidates = _collect_unmanaged_candidates(scan_dirs=scan_dirs, deep=deep)
 
     if not candidates:
-        log_ok("所有 AppImage 均已管理，未发现遗漏")
+        log_ok(tr("commands.scan.no_candidates"))
         return
 
     ibd = icon_base_dir()
 
     print(file=sys.stderr)
-    print(f"{C.BOLD}  发现 {len(candidates)} 个未管理的 AppImage{C.NC}", file=sys.stderr)
+    print(f"{C.BOLD}{tr('commands.scan.header', count=len(candidates))}{C.NC}", file=sys.stderr)
     print(file=sys.stderr)
 
     for candidate in candidates:
@@ -407,34 +422,34 @@ def cmd_scan(
                 icon_256 = ibd / "256x256" / "apps" / f"{icon_name}.png"
                 icon_svg = ibd / "scalable" / "apps" / f"{icon_name}.svg"
                 if not icon_256.exists() and not icon_svg.exists():
-                    issues.append("图标文件缺失")
+                    issues.append(tr("commands.scan.issue_missing_icon"))
             if not meta.get("StartupWMClass"):
-                issues.append("缺少 StartupWMClass（dock 图标可能异常）")
+                issues.append(tr("commands.scan.issue_missing_wmclass"))
         else:
-            issues.append("无 .desktop 文件")
+            issues.append(tr("commands.scan.issue_missing_desktop"))
 
         status = f"{C.GREEN}●{C.NC}" if not issues else f"{C.YELLOW}!{C.NC}"
         print(f"  {status}  {C.BOLD}{path.stem}{C.NC}", file=sys.stderr)
-        print(f"     {C.DIM}路径:{C.NC}     {path}", file=sys.stderr)
+        print(f"     {C.DIM}{tr('commands.scan.path')}:{C.NC}     {path}", file=sys.stderr)
         if has_desktop:
-            print(f"     {C.DIM}桌面文件:{C.NC} {desktop_file}", file=sys.stderr)
+            print(f"     {C.DIM}{tr('commands.scan.desktop_file')}:{C.NC} {desktop_file}", file=sys.stderr)
         else:
-            print(f"     {C.DIM}桌面文件:{C.NC} {C.YELLOW}无{C.NC}", file=sys.stderr)
-        source_label = "桌面文件反查" if candidate["source"] == "desktop" else "目录扫描"
-        print(f"     {C.DIM}来源:{C.NC}     {source_label}", file=sys.stderr)
+            print(f"     {C.DIM}{tr('commands.scan.desktop_file')}:{C.NC} {C.YELLOW}{tr('commands.scan.desktop_file_none')}{C.NC}", file=sys.stderr)
+        source_label = tr("commands.scan.source_desktop") if candidate["source"] == "desktop" else tr("commands.scan.source_scan")
+        print(f"     {C.DIM}{tr('commands.scan.source')}:{C.NC}     {source_label}", file=sys.stderr)
 
         if issues:
             for issue in issues:
                 print(f"     {C.YELLOW}⚠ {issue}{C.NC}", file=sys.stderr)
         else:
-            print(f"     {C.GREEN}配置正常，但未被本工具管理{C.NC}", file=sys.stderr)
+            print(f"     {C.GREEN}{tr('commands.scan.config_ok')}{C.NC}", file=sys.stderr)
         print(file=sys.stderr)
 
     print(f"  {C.DIM}{'─' * 40}{C.NC}", file=sys.stderr)
-    print(f"  使用 {C.BOLD}{sys.argv[0]} --import{C.NC}  将以上应用导入管理", file=sys.stderr)
-    print(f"  使用 {C.BOLD}{sys.argv[0]} --import --fix{C.NC}  导入并自动修复问题", file=sys.stderr)
-    print(f"  使用 {C.BOLD}{sys.argv[0]} --scan --deep{C.NC}  深度扫描（含无后缀文件）", file=sys.stderr)
-    print(f"  使用 {C.BOLD}{sys.argv[0]} --scan --scan-dir ~/Downloads{C.NC}  指定扫描目录", file=sys.stderr)
+    print(f"  {tr('commands.scan.import_hint', script=f'{C.BOLD}{sys.argv[0]}{C.NC}')}", file=sys.stderr)
+    print(f"  {tr('commands.scan.import_fix_hint', script=f'{C.BOLD}{sys.argv[0]}{C.NC}')}", file=sys.stderr)
+    print(f"  {tr('commands.scan.deep_hint', script=f'{C.BOLD}{sys.argv[0]}{C.NC}')}", file=sys.stderr)
+    print(f"  {tr('commands.scan.dir_hint', script=f'{C.BOLD}{sys.argv[0]}{C.NC}')}", file=sys.stderr)
     print(file=sys.stderr)
 
 
@@ -452,10 +467,10 @@ def cmd_import(
     candidates = _collect_unmanaged_candidates(scan_dirs=scan_dirs, deep=deep)
 
     if not candidates:
-        log_ok("没有需要导入的 AppImage")
+        log_ok(tr("commands.import.none"))
         return
 
-    log_info(f"准备导入 {len(candidates)} 个 AppImage...")
+    log_info(tr("commands.import.preparing", count=len(candidates)))
     print(file=sys.stderr)
 
     imported = 0
@@ -476,7 +491,7 @@ def cmd_import(
         if not wmclass:
             wmclass = make_id(name_clean)
             if fix:
-                log_info(f"  修复: 为 {name_clean} 解压获取 StartupWMClass...")
+                log_info(tr("commands.import.fix_wmclass", name=name_clean))
                 extract_dir = extract_appimage(path)
                 if extract_dir:
                     internal_desktop = find_internal_desktop(extract_dir)
@@ -484,7 +499,7 @@ def cmd_import(
                         internal_meta = parse_desktop_file(internal_desktop)
                         if internal_meta.get("StartupWMClass"):
                             wmclass = internal_meta["StartupWMClass"]
-                            log_ok(f"  获取到: {wmclass}")
+                            log_ok(tr("commands.import.got_wmclass", wmclass=wmclass))
                     shutil.rmtree(extract_dir, ignore_errors=True)
 
         display_name = meta.get("Name", "") or title_case(name_clean)
@@ -492,7 +507,7 @@ def cmd_import(
 
         if not desktop_file or not Path(desktop_file).exists():
             if fix:
-                log_info(f"  修复: 为 {display_name} 创建 .desktop 文件...")
+                log_info(tr("commands.import.fix_desktop", name=display_name))
                 desktop_file_path = applications_dir / f"{wmclass}.desktop"
                 applications_dir.mkdir(parents=True, exist_ok=True)
 
@@ -530,15 +545,15 @@ def cmd_import(
                 )
                 desktop_file_path.chmod(0o644)
                 desktop_file = str(desktop_file_path)
-                log_ok(f"  已创建: {desktop_file}")
+                log_ok(tr("commands.import.created", path=desktop_file))
             else:
-                log_warn(f"  {display_name}: 无 .desktop 文件，跳过（使用 --fix 自动创建）")
+                log_warn(tr("commands.import.skip_no_desktop", name=display_name))
                 continue
 
         icon_256 = ibd / "256x256" / "apps" / f"{icon_name}.png"
         icon_svg = ibd / "scalable" / "apps" / f"{icon_name}.svg"
         if not icon_256.exists() and not icon_svg.exists() and fix:
-            log_info(f"  修复: 为 {display_name} 提取/生成图标...")
+            log_info(tr("commands.import.fix_icon", name=display_name))
             ensure_index_theme()
             found = False
             extract_dir = extract_appimage(path)
@@ -553,20 +568,20 @@ def cmd_import(
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(found_icon, dest)
                     found = True
-                    log_ok(f"  已提取图标: {found_icon.name}")
+                    log_ok(tr("commands.import.icon_extracted", icon=found_icon.name))
                 shutil.rmtree(extract_dir, ignore_errors=True)
 
             if not found:
                 placeholder = ibd / "256x256" / "apps" / f"{icon_name}.png"
                 letter = display_name[0].upper() if display_name else "A"
                 if try_imagemagick_icon(placeholder, letter):
-                    log_ok("  已生成占位图标")
+                    log_ok(tr("commands.import.placeholder_generated"))
                 else:
                     try:
                         generate_placeholder_icon(placeholder)
-                        log_ok("  已生成占位图标")
+                        log_ok(tr("commands.import.placeholder_generated"))
                     except Exception:
-                        log_warn("  占位图标生成失败")
+                        log_warn(tr("commands.import.placeholder_failed"))
 
         add_installed(
             {
@@ -582,13 +597,13 @@ def cmd_import(
             }
         )
         imported += 1
-        log_ok(f"已导入: {display_name} ({wmclass})")
+        log_ok(tr("commands.import.imported", name=display_name, wmclass=wmclass))
 
     if imported > 0:
         update_system_caches()
         print(file=sys.stderr)
-        log_ok(f"成功导入 {imported} 个 AppImage")
-        log_info(f"使用 {C.BOLD}{sys.argv[0]} --list{C.NC} 查看完整列表")
+        log_ok(tr("commands.import.success", count=imported))
+        log_info(tr("commands.import.list_hint", script=f"{C.BOLD}{sys.argv[0]}{C.NC}"))
     else:
         print(file=sys.stderr)
-        log_info("没有成功导入任何应用")
+        log_info(tr("commands.import.none_done"))
