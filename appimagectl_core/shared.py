@@ -5,9 +5,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+from appimagectl_core.i18n import tr
+
 
 HOME = Path.home()
-CONFIG_DIR = HOME / ".config" / "appimage-installer"
+CONFIG_DIR = HOME / ".config" / "appimagectl"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 INSTALLED_LIST = CONFIG_DIR / "installed.json"
 
@@ -161,7 +163,7 @@ def update_system_caches():
 
 
 def check_dependencies():
-    log_info("检查依赖...")
+    log_info(tr("deps.checking"))
     missing: list[str] = []
 
     if not shutil.which("gtk-update-icon-cache"):
@@ -170,21 +172,21 @@ def check_dependencies():
         missing.append("desktop-file-utils")
 
     if not missing:
-        log_ok("依赖检查完成")
+        log_ok(tr("deps.done"))
         return
 
-    log_warn(f"缺少依赖: {', '.join(missing)}")
+    log_warn(tr("deps.missing", packages=", ".join(missing)))
     match DISTRO:
         case "fedora":
             cmd = ["sudo", "dnf", "install", "-y"] + missing
         case "ubuntu":
             cmd = ["sudo", "apt", "install", "-y"] + missing
         case _:
-            log_warn("未知发行版，请手动安装上述依赖")
+            log_warn(tr("deps.unknown_distro"))
             return
 
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError:
-        log_warn("依赖安装失败，部分功能可能不可用")
-    log_ok("依赖检查完成")
+        log_warn(tr("deps.install_failed"))
+    log_ok(tr("deps.done"))
