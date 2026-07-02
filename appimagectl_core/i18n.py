@@ -21,8 +21,8 @@ def current_language() -> str:
     return "en"
 
 
-def tr(key: str, **kwargs) -> str:
+def tr(message_key: str, **kwargs) -> str:
     lang = current_language()
     catalog = LOCALES.get(lang, EN_MESSAGES)
-    template = catalog.get(key) or EN_MESSAGES.get(key) or key
+    template = catalog.get(message_key) or EN_MESSAGES.get(message_key) or message_key
     return template.format(**kwargs)
